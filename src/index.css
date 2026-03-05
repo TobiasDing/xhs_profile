@@ -1,0 +1,119 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&family=Playfair+Display:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply bg-cream text-brown font-sans antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+  /* Staircase Heading - 上短下长，左对齐 */
+  .staircase-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+  
+  .staircase-line {
+    font-family: var(--font-serif);
+    color: white;
+    line-height: 1.1;
+    text-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+  }
+  
+  .staircase-line.short {
+    font-size: 1.75rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.25rem;
+    opacity: 0.9;
+  }
+  
+  @media (min-width: 768px) {
+    .staircase-line.short {
+      font-size: 2.25rem;
+    }
+  }
+  
+  .staircase-line.long {
+    font-size: 2.5rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+  }
+  
+  @media (min-width: 768px) {
+    .staircase-line.long {
+      font-size: 3.5rem;
+    }
+  }
+  
+  .nav-item {
+    @apply relative cursor-pointer transition-all duration-300;
+  }
+  
+  .nav-item::after {
+    content: '';
+    @apply absolute bottom-0 left-0 w-0 h-px bg-brown-light transition-all duration-300;
+  }
+  
+  .nav-item:hover::after,
+  .nav-item.active::after {
+    @apply w-full;
+  }
+  
+  .stat-card {
+    @apply flex items-center gap-4 p-5 rounded-xl bg-white/10 border border-white/10 transition-all duration-300;
+  }
+  
+  .stat-card:hover {
+    @apply bg-white/15 translate-x-1;
+  }
+  
+  .tag-breathe {
+    animation: breathe 3s ease-in-out infinite;
+  }
+}
+
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(75, 54, 33, 0.15);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(75, 54, 33, 0.3);
+}
