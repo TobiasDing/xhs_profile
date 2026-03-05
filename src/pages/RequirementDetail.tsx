@@ -30,35 +30,45 @@ interface Requirement {
 }
 
 // 工作流节点定义
+// 图文流程: 提报 -> 提报审批 -> (品牌下单 || 确认接单) -> 大纲撰写 -> 大纲审核 -> 素材拍摄 -> 后期处理 -> 初稿审核 -> 上传平台 -> 正式发布
+// 视频流程: 提报 -> 提报审批 -> (品牌下单 || 确认接单) -> 脚本编写 -> 脚本审核 -> 素材拍摄 -> 视频剪辑 -> 初稿审核 -> 上传平台 -> 正式发布
 const getWorkflowNodes = (genre: 'image_text' | 'video'): WorkflowNode[] => {
-  const commonNodes = [
-    { node_id: 'submission', node_name: '提报', status: 'completed' as const, completed_at: '2024-01-15' },
-    { node_id: 'submission_review', node_name: '提报审批', status: 'completed' as const, completed_at: '2024-01-16' },
-    { node_id: 'brand_order', node_name: '品牌下单', status: 'pending' as const },
-    { node_id: 'confirm_order', node_name: '确认接单', status: 'pending' as const },
+  // 基础节点 - 默认第一个进行中，其他待处理
+  const baseNodes = [
+    { node_id: 'submission', node_name: '提报', status: 'in_progress' as const },
+    { node_id: 'submission_review', node_name: '提报审批', status: 'pending' as const },
+    // 分支节点：品牌下单和确认接单是并行的，互不影响
+    { node_id: 'brand_order', node_name: '品牌下单', status: 'pending' as const, isBranch: true },
+    { node_id: 'confirm_order', node_name: '确认接单', status: 'pending' as const, isBranch: true },
+  ];
+
+  // 图文特有节点
+  const imageTextNodes = [
+    { node_id: 'outline_writing', node_name: '大纲撰写', status: 'pending' as const, worktime: 0 },
+    { node_id: 'outline_review', node_name: '大纲审核', status: 'pending' as const },
+    { node_id: 'shooting', node_name: '素材拍摄', status: 'pending' as const, worktime: 0 },
+    { node_id: 'post_processing', node_name: '后期处理', status: 'pending' as const, worktime: 0 },
+  ];
+
+  // 视频特有节点
+  const videoNodes = [
+    { node_id: 'script_writing', node_name: '脚本编写', status: 'pending' as const, worktime: 0 },
+    { node_id: 'script_review', node_name: '脚本审核', status: 'pending' as const },
+    { node_id: 'shooting', node_name: '素材拍摄', status: 'pending' as const, worktime: 0 },
+    { node_id: 'video_editing', node_name: '视频剪辑', status: 'pending' as const, worktime: 0 },
+  ];
+
+  // 通用后置节点
+  const endNodes = [
     { node_id: 'initial_review', node_name: '初稿审核', status: 'pending' as const },
     { node_id: 'upload', node_name: '上传平台', status: 'pending' as const },
     { node_id: 'publish', node_name: '正式发布', status: 'pending' as const },
   ];
 
   if (genre === 'image_text') {
-    return [
-      ...commonNodes.slice(0, 4),
-      { node_id: 'outline_writing', node_name: '大纲撰写', status: 'in_progress' as const, worktime: 0 },
-      { node_id: 'outline_review', node_name: '大纲审核', status: 'pending' as const },
-      { node_id: 'shooting', node_name: '素材拍摄', status: 'pending' as const, worktime: 0 },
-      { node_id: 'post_processing', node_name: '后期处理', status: 'pending' as const, worktime: 0 },
-      ...commonNodes.slice(4),
-    ];
+    return [...baseNodes, ...imageTextNodes, ...endNodes];
   } else {
-    return [
-      ...commonNodes.slice(0, 4),
-      { node_id: 'script_writing', node_name: '脚本编写', status: 'in_progress' as const, worktime: 0 },
-      { node_id: 'script_review', node_name: '脚本审核', status: 'pending' as const },
-      { node_id: 'shooting', node_name: '素材拍摄', status: 'pending' as const, worktime: 0 },
-      { node_id: 'video_editing', node_name: '视频剪辑', status: 'pending' as const, worktime: 0 },
-      ...commonNodes.slice(4),
-    ];
+    return [...baseNodes, ...videoNodes, ...endNodes];
   }
 };
 
@@ -101,11 +111,41 @@ export default function RequirementDetail() {
     setSelectedNode(node);
   };
 
+  // 分支节点列表
+  const branchNodes = ['brand_order', 'confirm_order'];
+  
+  // 获取节点的依赖节点（前置节点）
+  const getDependencyNodes = (nodeId: string): string[] => {
+    const dependencies: Record<string, string[]> = {
+      'submission_review': ['submission'],
+      'brand_order': ['submission_review'],
+      'confirm_order': ['submission_review'],
+      'outline_writing': ['submission_review'], // 分支节点完成后才能开始
+      'script_writing': ['submission_review'],
+      'outline_review': ['outline_writing'],
+      'script_review': ['script_writing'],
+      'shooting': ['outline_review', 'script_review'], // 图文和视频都走这里
+      'post_processing': ['shooting'],
+      'video_editing': ['shooting'],
+      'initial_review': ['post_processing', 'video_editing'],
+      'upload': ['initial_review'],
+      'publish': ['upload'],
+    };
+    return dependencies[nodeId] || [];
+  };
+
   const canCompleteNode = (node: WorkflowNode): boolean => {
-    const nodeIndex = workflowNodes.findIndex(n => n.node_id === node.node_id);
-    // 检查所有前置节点是否已完成
-    for (let i = 0; i < nodeIndex; i++) {
-      if (workflowNodes[i].status !== 'completed') {
+    // 分支节点（品牌下单、确认接单）只需要提报审批完成即可
+    if (branchNodes.includes(node.node_id)) {
+      const submissionReview = workflowNodes.find(n => n.node_id === 'submission_review');
+      return submissionReview?.status === 'completed';
+    }
+    
+    // 其他节点检查依赖
+    const dependencies = getDependencyNodes(node.node_id);
+    for (const depId of dependencies) {
+      const depNode = workflowNodes.find(n => n.node_id === depId);
+      if (!depNode || depNode.status !== 'completed') {
         return false;
       }
     }
@@ -113,10 +153,20 @@ export default function RequirementDetail() {
   };
 
   const getCannotCompleteReason = (node: WorkflowNode): string => {
-    const nodeIndex = workflowNodes.findIndex(n => n.node_id === node.node_id);
-    for (let i = 0; i < nodeIndex; i++) {
-      if (workflowNodes[i].status !== 'completed') {
-        return `请先完成前置节点: ${workflowNodes[i].node_name}`;
+    // 分支节点
+    if (branchNodes.includes(node.node_id)) {
+      const submissionReview = workflowNodes.find(n => n.node_id === 'submission_review');
+      if (submissionReview?.status !== 'completed') {
+        return '请先完成前置节点: 提报审批';
+      }
+      return '';
+    }
+    
+    const dependencies = getDependencyNodes(node.node_id);
+    for (const depId of dependencies) {
+      const depNode = workflowNodes.find(n => n.node_id === depId);
+      if (!depNode || depNode.status !== 'completed') {
+        return `请先完成前置节点: ${depNode?.node_name || depId}`;
       }
     }
     return '';
@@ -144,18 +194,49 @@ export default function RequirementDetail() {
       if (node.node_id === selectedNode.node_id) {
         return { ...node, status: 'completed' as const, completed_at: new Date().toISOString() };
       }
-      // 设置下一个节点为进行中
-      const nodeIndex = workflowNodes.findIndex(n => n.node_id === selectedNode.node_id);
-      const currentIndex = workflowNodes.findIndex(n => n.node_id === node.node_id);
-      if (currentIndex === nodeIndex + 1) {
-        return { ...node, status: 'in_progress' as const };
-      }
       return node;
     });
+    
+    // 自动设置下一个节点为进行中
+    const nextNodeId = getNextNodeId(selectedNode.node_id);
+    if (nextNodeId) {
+      const nextNodeIndex = updatedNodes.findIndex(n => n.node_id === nextNodeId);
+      if (nextNodeIndex >= 0 && updatedNodes[nextNodeIndex].status === 'pending') {
+        // 检查下一个节点的依赖是否都已完成
+        const nextNodeDeps = getDependencyNodes(nextNodeId);
+        const allDepsCompleted = nextNodeDeps.every(depId => {
+          const depNode = updatedNodes.find(n => n.node_id === depId);
+          return depNode?.status === 'completed';
+        });
+        if (allDepsCompleted) {
+          updatedNodes[nextNodeIndex] = { ...updatedNodes[nextNodeIndex], status: 'in_progress' as const };
+        }
+      }
+    }
     
     setWorkflowNodes(updatedNodes);
     setSelectedNode({ ...selectedNode, status: 'completed', completed_at: new Date().toISOString() });
     setCompletingNode(false);
+  };
+
+  // 获取下一个节点ID
+  const getNextNodeId = (currentNodeId: string): string | null => {
+    const flow: Record<string, string> = {
+      'submission': 'submission_review',
+      'submission_review': 'outline_writing', // 提报审批完成后，可以开始大纲撰写/脚本编写
+      'brand_order': '', // 分支节点，不影响主流程
+      'confirm_order': '', // 分支节点，不影响主流程
+      'outline_writing': 'outline_review',
+      'script_writing': 'script_review',
+      'outline_review': 'shooting',
+      'script_review': 'shooting',
+      'shooting': 'post_processing', // 图文
+      'post_processing': 'initial_review',
+      'video_editing': 'initial_review', // 视频
+      'initial_review': 'upload',
+      'upload': 'publish',
+    };
+    return flow[currentNodeId] || null;
   };
 
   const cancelCompleteNode = async () => {
@@ -178,7 +259,7 @@ export default function RequirementDetail() {
     });
     
     setWorkflowNodes(updatedNodes);
-    setSelectedNode({ ...selectedNode, status: 'in_progress', completed_at: undefined };
+    setSelectedNode({ ...selectedNode, status: 'in_progress', completed_at: undefined });
     setCancelingNode(false);
   };
 
